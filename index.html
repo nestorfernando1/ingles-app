@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#26a69a">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon-192.png">
+    <title>Habla Ingles</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #f2f7fb; padding: 16px; max-width: 560px; margin: 0 auto; }
+        h1 { font-size: 22px; color: #26a69a; margin-bottom: 4px; }
+        .subtitulo { font-size: 13px; color: #666; margin-bottom: 12px; }
+        .tarjeta { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+        .etiqueta { font-weight: bold; font-size: 13px; margin-bottom: 8px; color: #333; }
+        .fila-botones { display: flex; gap: 8px; margin-top: 8px; }
+        .fila-botones button { flex: 1; }
+        button { padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; background: #26a69a; color: #fff; }
+        button:active { transform: scale(.97); }
+        .btn-mic { background: #ef5350 !important; }
+        .grabando { background: #b71c1c !important; }
+        .btn-llave { background: #5c6bc0 !important; }
+        .btn-borrar { background: #78909c !important; }
+        .salida { background: #f7f7f7; border-radius: 8px; padding: 12px; min-height: 60px; font-size: 16px; color: #222; margin-top: 8px; white-space: pre-wrap; }
+        .correccion { border-left: 4px solid #ffb300; padding: 8px 12px; font-size: 14px; color: #333; margin-top: 8px; background: #fff8e1; }
+        .respuesta { border-left: 4px solid #26a69a; padding: 8px 12px; font-size: 15px; color: #222; margin-top: 8px; background: #e0f2f1; }
+        .mensaje { font-size: 13px; color: #c62828; text-align: center; margin-top: 8px; }
+        .err { color: #c62828; font-size: 14px; text-align: center; margin-top: 8px; }
+        .avatar { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; background: #e0f2f1; border: 3px solid #26a69a; }
+        .avatar.hablando { animation: habla .8s infinite alternate; }
+        @keyframes habla { from { transform: scale(1); } to { transform: scale(1.15); } }
+        select { padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; width: 100%; }
+        .pie { font-size: 11px; color: #999; text-align: center; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <h1>🗣️ Habla Inglés</h1>
+    <div class="subtitulo">Practica inglés hablando. Te corrijo y te respondo en voz alta.</div>
+
+    <div class="tarjeta" style="text-align:center;">
+        <div class="avatar" id="avatar">🙂</div>
+        <div class="etiqueta" id="estado">Toca el botón y habla inglés</div>
+        <button class="btn-mic" id="btnMic" onclick="escuchar()">🎤 Hablar</button>
+        <div class="fila-botones">
+            <button onclick="enviarTextoManual()">💬 Escribir</button>
+            <button onclick="repetir()">🔊 Repetir</button>
+        </div>
+        <div class="fila-botones">
+            <button class="btn-llave" onclick="ponerClave()">🔑 Llave</button>
+            <button class="btn-borrar" onclick="borrarClave()">🗑 Borrar llave</button>
+        </div>
+    </div>
+
+    <div class="tarjeta">
+        <div class="etiqueta">Lo que dijiste</div>
+        <div class="salida" id="loDijiste">(aquí aparecerá tu voz)</div>
+        <div class="etiqueta" style="margin-top:10px;">Corrección y respuesta</div>
+        <div class="salida" id="resultado">Esperando que hables...</div>
+        <div class="correccion" id="correccion" style="display:none;"></div>
+        <div class="respuesta" id="traduccion" style="display:none;"></div>
+        <div class="fila-botones">
+            <button onclick="cambiarTema()">🎯 Cambiar tema</button>
+            <button onclick="limpiar()">🧹 Limpiar</button>
+        </div>
+        <div class="mensaje" id="msg"></div>
+        <div class="err" id="err"></div>
+    </div>
+
+    <div class="tarjeta">
+        <div class="etiqueta">Tipo de práctica</div>
+        <select id="tema">
+            <option value="conversacion">Conversación libre (responde lo que le hables)</option>
+            <option value="presentacion">Diálogo guiado: presentate</option>
+            <option value="comida">Diálogo guiado: pedir comida</option>
+            <option value="viajes">Diálogo guiado: viajes</option>
+            <option value="trabajo">Diálogo guiado: trabajo</option>
+            <option value="saludos">Diálogo guiado: saludos</option>
+        </select>
+    </div>
+
+    <div class="pie">💡 Habla claro y sin ruido. Necesita internet y permiso del micrófono.</div>
+
+    <script>
+        var model = 'nvidia/nemotron-3-super-120b-a12b:free';
+        var ultimoTexto = '';
+        var ultimaRespuesta = '';
+
+        function getClave() {
+            var k = localStorage.getItem('llaveIA') || '';
+            if (!k) {
+                k = prompt('Bienvenido a Habla Inglés.\nPega aquí tu llave (sk-or-v1-...). La encuentras en openrouter.ai > API Keys. Se guarda solo en tu teléfono.');
+                if (k && k.trim()) {
+                    localStorage.setItem('llaveIA', k.trim());
+                }
+            }
+            return localStorage.getItem('llaveIA') || '';
+        }
+
+        function ponerClave() {
+            var k = prompt('Pega aquí tu llave de OpenRouter (sk-or-v1-...):');
+            if (k && k.trim()) {
+                localStorage.setItem('llaveIA', k.trim());
+                msg('Llave guardada en tu teléfono.');
+                err('');
+            }
+        }
+
+        function borrarClave() {
+            if (confirm('¿Borrar la llave guardada? Te la pedirá de nuevo la próxima vez.')) {
+                localStorage.removeItem('llaveIA');
+                document.getElementById('msg').textContent = 'Llave borrada.';
+            }
+        }
+
+        function msg(t) { document.getElementById('msg').textContent = t; }
+        function err(m) { document.getElementById('err').textContent = m; }
+
+        function escuchar() {
+            var btn = document.getElementById('btnMic');
+            var estado = document.getElementById('estado');
+            err(''); msg('');
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                err('Tu navegador no soporta dictado por voz (usa Chrome).');
+                return;
+            }
+            var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            var rec = new SR();
+            rec.lang = 'en-US';
+            rec.interimResults = true;
+            rec.continuous = true;
+            rec.onstart = function () {
+                btn.classList.add('grabando');
+                btn.textContent = '🔴 Escuchando... toca para terminar';
+                estado.textContent = 'Escuchándote en inglés...';
+                document.getElementById('avatar').classList.add('hablando');
+            };
+            rec.onresult = function (e) {
+                var texto = '';
+                for (var i = e.resultIndex; i < e.results.length; i++) {
+                    texto += e.results[i][0].transcript;
+                }
+                document.getElementById('loDijiste').textContent = texto;
+                ultimoTexto = texto;
+            };
+            rec.onend = function () {
+                btn.classList.remove('grabando');
+                btn.textContent = '🎤 Hablar';
+                document.getElementById('avatar').classList.remove('hablando');
+                estado.textContent = 'Toca el botón y habla inglés';
+                if (ultimoTexto && ultimoTexto.trim()) {
+                    pedirIA(ultimoTexto.trim());
+                } else {
+                    estado.textContent = 'No escuché nada. Vuelve a intentarlo.';
+                }
+            };
+            rec.onerror = function (e) {
+                btn.classList.remove('grabando');
+                btn.textContent = '🎤 Hablar';
+                document.getElementById('avatar').classList.remove('hablando');
+                if (e.error === 'not-allowed') {
+                    err('Dame permiso de usar el micrófono (toque Permitir).');
+                } else if (e.error === 'no-speech') {
+                    estado.textContent = 'No escuché nada. Habla más cerca y prueba otra vez.';
+                } else {
+                    err('Error del micrófono: ' + e.error);
+                }
+            };
+            if (btn.classList.contains('grabando')) { rec.stop(); return; }
+            try { rec.start(); } catch (e) { }
+        }
+
+        function enviarTextoManual() {
+            var texto = prompt('Escribe en inglés lo que quieres decir:');
+            if (!texto) return;
+            document.getElementById('loDijiste').textContent = texto.trim();
+            ultimoTexto = texto.trim();
+            pedirIA(ultimoTexto);
+        }
+
+        function pedirIA(texto) {
+            var estado = document.getElementById('estado');
+            var clave = getClave();
+            if (!clave) {
+                err('Necesitas guardar tu llave para usar la IA. Toca "🔑 Llave" para ponerla.');
+                estado.textContent = 'Falta la llave de IA.';
+                return;
+            }
+            estado.textContent = 'Pensando...';
+            document.getElementById('avatar').textContent = '🤔';
+            document.getElementById('resultado').textContent = 'Corrigiendo y respondiendo...';
+            var instrucciones = 'You are a friendly English tutor for a Spanish speaker. ' +
+                'The student said this in English: "' + texto + '". ' +
+                'Respond in English with this EXACT structure (in that order, no extra text):\n' +
+                'CORRECTION: If the sentence has errors, correct it (write the correct English). If not, write "Good!"\n' +
+                'FIXES: List the mistakes in Spanish, short, like: "No digas X, di Y". If none, write "No hay errores."\n' +
+                'REPLY: Give a natural short reply in English (2-3 sentences) asking one simple question back.\n' +
+                'Keep it friendly and simple.';
+            var url = 'https://openrouter.ai/api/v1/chat/completions';
+            var cuerpo = {
+                model: model,
+                messages: [
+                    { role: 'system', content: 'You are a friendly English tutor for a Spanish speaker. Always answer in the EXACT structure with CORRECTION:, FIXES: and REPLY: labels.' },
+                    { role: 'user', content: instrucciones }
+                ]
+            };
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + clave
+                },
+                body: JSON.stringify(cuerpo)
+            }).then(function (r) {
+                if (r.status === 401 || r.status === 403) {
+                    throw new Error('CLAVE_INVALIDA');
+                }
+                if (r.status === 429) {
+                    throw new Error('SIN_CREDITO');
+                }
+                if (!r.ok) {
+                    throw new Error('ERROR_' + r.status);
+                }
+                return r.json();
+            }).then(function (data) {
+                var t = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+                ultimaRespuesta = t;
+                mostrarResultado(t);
+                estado.textContent = 'Listo. Corrige tu inglés y responde.';
+                document.getElementById('avatar').textContent = '😄';
+                hablar(t);
+            }).catch(function (e) {
+                estado.textContent = 'Hmm...';
+                document.getElementById('avatar').textContent = '😢';
+                if (e.message === 'CLAVE_INVALIDA') {
+                    err('La clave de IA no es válida. Hay que revisarla en el código.');
+                } else if (e.message === 'SIN_CREDITO') {
+                    err('La cuenta de IA se quedó sin cuota gratis por ahora. Espera un poco.');
+                } else {
+                    err('No se pudo contactar la IA. Revisa internet: ' + e.message);
+                }
+            });
+        }
+
+        function mostrarResultado(t) {
+            var res = document.getElementById('resultado');
+            var cor = document.getElementById('correccion');
+            var tra = document.getElementById('traduccion');
+            res.textContent = t;
+            var mCorr = t.match(/CORRECTION:([\s\S]*?)(?=FIXES:|REPLY:|$)/i);
+            var mFix = t.match(/FIXES:([\s\S]*?)(?=REPLY:|$)/i);
+            var mRep = t.match(/REPLY:([\s\S]*?)$/i);
+            if (mCorr && mCorr[1].trim()) {
+                var c = mCorr[1].trim();
+                if (c.toLowerCase().indexOf('good') !== 0) {
+                    cor.style.display = 'block';
+                    cor.innerHTML = '<b>✔ Corrección:</b> ' + c;
+                } else {
+                    cor.style.display = 'none';
+                }
+            }
+            if (mFix && mFix[1].trim() && mFix[1].trim().toLowerCase().indexOf('no hay errores') === -1) {
+                var aux = document.createElement('div');
+                aux.innerHTML = '';
+                if (tra.style.display === 'none') {
+                    tra.style.display = 'block';
+                    tra.innerHTML = '<b>📝 Por qué:</b><br>' + mFix[1].trim();
+                }
+            }
+            if (mRep && mRep[1].trim()) {
+                respuestaPura = mRep[1].trim();
+                if (tra.style.display === 'none') {
+                    tra.style.display = 'block';
+                    tra.innerHTML = '<b>💬 Respuesta:</b><br>' + respuestaPura;
+                }
+            }
+        }
+
+        function hablar(t) {
+            if (!('speechSynthesis' in window)) return;
+            var textoHablar = t;
+            var mRep = t.match(/REPLY:([\s\S]*?)$/i);
+            if (mRep && mRep[1].trim()) textoHablar = mRep[1].trim();
+            window.speechSynthesis.cancel();
+            var u = new SpeechSynthesisUtterance(textoHablar);
+            u.lang = 'en-US';
+            u.rate = 0.95;
+            window.speechSynthesis.speak(u);
+        }
+
+        function repetir() {
+            if (!ultimaRespuesta) { msg('Primero habla o escribe algo.'); return; }
+            hablar(ultimaRespuesta);
+        }
+
+        function limpiar() {
+            document.getElementById('loDijiste').textContent = '(aquí aparecerá tu voz)';
+            document.getElementById('resultado').textContent = 'Esperando que hables...';
+            document.getElementById('correccion').style.display = 'none';
+            document.getElementById('traduccion').style.display = 'none';
+            err(''); msg('');
+            ultimoTexto = ''; ultimaRespuesta = '';
+        }
+
+        function cambiarTema() {
+            msg('Tema: para la próxima conversación. Sigue hablando normalmente.');
+        }
+    </script>
+</body>
+</html>
